@@ -307,7 +307,7 @@ with Flow('comparison_with_company') as comparison:
     company_data_transformer = Company(logger)
     company_data = company_data_transformer.get_data_from_company_db(company_data_transformer)
     company_data = company_data_transformer.transform_company_data(company_data_transformer, company_data)
-    comparators = [Comparator('hostkey', logger), Comparator('timeweb', logger), Comparator('servers_ru', logger)]
+    comparators = [Comparator('Competitor1', logger), Comparator('Competitor2', logger), Comparator('Competitor3', logger)]
     for comparator in comparators:
         new_matching = comparator.find_similar_configs(comparator, company_data)
         comparator.load_to_db(comparator, new_matching)

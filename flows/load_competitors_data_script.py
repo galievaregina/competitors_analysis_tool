@@ -110,11 +110,11 @@ class DataProcessor:
 
 
 # Эталонные структуры json для сайтов, позволяющие получить данные через API
-class StructureJson_Timeweb(BaseModel):
+class StructureJson_Competitor1(BaseModel):
     body: list
 
 
-class StructureServer_Timeweb(BaseModel):
+class StructureServer_Competitor1(BaseModel):
     cpu_vendor_short: str
     cpu_cores: int
     cpu_vendor: str
@@ -124,91 +124,91 @@ class StructureServer_Timeweb(BaseModel):
     price: str
 
 
-class Structure_cpu_hostkey(BaseModel):
+class Structure_cpu_Competitor2(BaseModel):
     description: str
     number_cores: int
     items: list
 
 
-class Structure_ram_hostkey(BaseModel):
+class Structure_ram_Competitor2(BaseModel):
     volume: int
 
 
-class Structure_hard_drive_hostkey(BaseModel):
+class Structure_hard_drive_Competitor2(BaseModel):
     description: str
 
 
-class Structure_hardware_hostkey(BaseModel):
-    cpu: Structure_cpu_hostkey
-    ram: Structure_ram_hostkey
-    hard_drive: Structure_hard_drive_hostkey
+class Structure_hardware_Competitor2(BaseModel):
+    cpu: Structure_cpu_Competitor2
+    ram: Structure_ram_Competitor2
+    hard_drive: Structure_hard_drive_Competitor2
 
 
-class Structure_conditions_hostkey(BaseModel):
+class Structure_conditions_Competitor2(BaseModel):
     items: list
 
 
-class Structure_common_hostkey(BaseModel):
+class Structure_common_Competitor2(BaseModel):
     location: str
-    conditions: Structure_conditions_hostkey
+    conditions: Structure_conditions_Competitor2
 
 
-class Structure_hostkey(BaseModel):
-    common: Structure_common_hostkey
-    hardware: Structure_hardware_hostkey
+class Structure_Competitor2(BaseModel):
+    common: Structure_common_Competitor2
+    hardware: Structure_hardware_Competitor2
 
 
-class Structure_cpu_hostkey_sale(BaseModel):
+class Structure_cpu_Competitor2_sale(BaseModel):
     description: str
     number: int
     number_cores: int
     items: list
 
 
-class Structure_ram_hostkey_sale(BaseModel):
+class Structure_ram_Competitor2_sale(BaseModel):
     volume: int
     type: str
 
 
-class Structure_hard_drive_hostkey_sale(BaseModel):
+class Structure_hard_drive_Competitor2_sale(BaseModel):
     items: list
 
 
-class Structure_graphics_hostkey_gpu(BaseModel):
+class Structure_graphics_Competitor2_gpu(BaseModel):
     items: str
     number: int
 
 
-class Structure_hardware_hostkey_sale(BaseModel):
-    cpu: Structure_cpu_hostkey_sale
-    ram: Structure_ram_hostkey_sale
-    hard_drive: Structure_hard_drive_hostkey_sale
-    graphics: Optional[Structure_graphics_hostkey_gpu] = None
+class Structure_hardware_Competitor2_sale(BaseModel):
+    cpu: Structure_cpu_Competitor2_sale
+    ram: Structure_ram_Competitor2_sale
+    hard_drive: Structure_hard_drive_Competitor2_sale
+    graphics: Optional[Structure_graphics_Competitor2_gpu] = None
 
 
-class Structure_conditions_hostkey_sale(BaseModel):
+class Structure_conditions_Competitor2_sale(BaseModel):
     items: list
 
 
-class Structure_common_hostkey_sale(BaseModel):
+class Structure_common_Competitor2_sale(BaseModel):
     location: str
-    conditions: Structure_conditions_hostkey_sale
+    conditions: Structure_conditions_Competitor2_sale
 
 
-class Structure_hostkey_sale(BaseModel):
-    common: Structure_common_hostkey_sale
-    hardware: Structure_hardware_hostkey_sale
+class Structure_Competitor2_sale(BaseModel):
+    common: Structure_common_Competitor2_sale
+    hardware: Structure_hardware_Competitor2_sale
 
 
-class StructureJson_Hostkey(BaseModel):
+class StructureJson_Competitor2(BaseModel):
     response: list
 
 
-class Timeweb:
+class Competitor1:
     def __init__(self, logger):
-        self.url = 'https://timeweb.cloud/v1.1/registration/servers'
+        self.url = 'https://Competitor1.cloud/v1.1/registration/servers'
         self.logger = logger
-        self.competitor = 'timeweb'
+        self.competitor = 'Competitor1'
         self.processor = DataProcessor(logger)
 
     # выгрузка данных с веб-сайта
@@ -260,14 +260,14 @@ class Timeweb:
     # извлечение и структурирование выгруженных данных
     @task
     def transform_data(self, data_from_website):
-        self.validate_json(data_from_website.text, StructureJson_Timeweb)
+        self.validate_json(data_from_website.text, StructureJson_Competitor1)
         self.logger.info('Start data transforming')
         servers = data_from_website.json()['body']
         transformed_data = pd.DataFrame()
         counter = 0
 
         for server in servers:
-            self.validate_json(json.dumps(server), StructureServer_Timeweb)
+            self.validate_json(json.dumps(server), StructureServer_Competitor1)
             id_config = uuid4()
             cpu_name = self.processor.delete_vendor(server['cpu_vendor_short'])
             cpu_name_parts = self.processor.get_cpu_count(cpu_name)
@@ -308,14 +308,14 @@ class Timeweb:
         self.processor.load_to_db(self.competitor, transformed_data)
 
 
-class Hostkey:
+class Competitor2:
     def __init__(self, logger):
         self.url = [
-            'https://api.hostkey.com/v1/inv-api/get-presets-list?tag=bm&netag=web_noru,web_nosite&location=NL&currency=rub&pricerate=1&currencycon=br&servertype=1&filter=no&language=ru&invapi=yes',
-            'https://api.hostkey.com/v1/inv-api/get-presets-list?tag=bm&netag=web_noru,web_nosite&location=US&currency=rub&pricerate=1&currencycon=br&servertype=1&filter=no&language=ru&invapi=yes',
-            'https://api.hostkey.com/v1/inv-api/get-presets-list?tag=bm&netag=web_noru,web_nosite&location=RU&currency=rub&pricerate=1&currencycon=br&servertype=1&filter=no&language=ru&invapi=yes',
-            'https://api.hostkey.com/v1/inv-api/get-stock-servers?location=&group=!GPU&stock=yes&currency=rub&currencycon=br&servertype=1&pricerate=1&language=ru&name=no',
-            'https://api.hostkey.com/v1/inv-api/get-stock-servers?%20location=&group=gpu&stock=yes&currency=rub&pricerate=1&currencycon=br&servertype=1&name=no&filter=no&language=ru']
+            'https://api.Competitor2.com/v1/inv-api/get-presets-list?tag=bm&netag=web_noru,web_nosite&location=NL&currency=rub&pricerate=1&currencycon=br&servertype=1&filter=no&language=ru&invapi=yes',
+            'https://api.Competitor2.com/v1/inv-api/get-presets-list?tag=bm&netag=web_noru,web_nosite&location=US&currency=rub&pricerate=1&currencycon=br&servertype=1&filter=no&language=ru&invapi=yes',
+            'https://api.Competitor2.com/v1/inv-api/get-presets-list?tag=bm&netag=web_noru,web_nosite&location=RU&currency=rub&pricerate=1&currencycon=br&servertype=1&filter=no&language=ru&invapi=yes',
+            'https://api.Competitor2.com/v1/inv-api/get-stock-servers?location=&group=!GPU&stock=yes&currency=rub&currencycon=br&servertype=1&pricerate=1&language=ru&name=no',
+            'https://api.Competitor2.com/v1/inv-api/get-stock-servers?%20location=&group=gpu&stock=yes&currency=rub&pricerate=1&currencycon=br&servertype=1&name=no&filter=no&language=ru']
         self.logger = logger
         self.competitor = 'hostkey'
         self.processor = DataProcessor(logger)
@@ -324,7 +324,7 @@ class Hostkey:
     @task(max_retries=10, retry_delay=timedelta(seconds=10))
     def extract_data(self):
         # Выгрузка данных с веб-сайта
-        hostkey_data_from_website = []
+        data_from_website = []
         urls = self.url
         for url in urls:
             self.logger.info(f'Start сonnection to {url}')
@@ -335,8 +335,8 @@ class Hostkey:
                 time.sleep(10)
                 raise SystemExit(err)
             self.logger.info(f'Extracted data from website {servers.text}')
-            hostkey_data_from_website.append(servers)
-        return hostkey_data_from_website
+            data_from_website.append(servers)
+        return data_from_website
 
     # валидация структуры json
     def validate_json(self, data, structure):
@@ -347,7 +347,7 @@ class Hostkey:
             raise SystemExit(e)
 
     # получение данных об объеме разных типов дисков
-    def unpack_disks_hostkey(self, disk):
+    def unpack_disks_Competitor2(self, disk):
         output = {
             'hdd': 0,
             'ssd': 0,
@@ -384,7 +384,7 @@ class Hostkey:
                 output[disks[1]] = size
         return output['hdd'], output['ssd'], output['nvme']
 
-    def unpack_disks_hostkey_sale_gpu(self, disks):
+    def unpack_disks_Competitor2_sale_gpu(self, disks):
         output = {
             'hdd': 0,
             'ssd': 0,
@@ -404,14 +404,14 @@ class Hostkey:
 
     # создание DataFrame с извлеченными данными для разных страницы сайта
 
-    def sale_gpu_hostkey(self, data_from_website):
-        self.validate_json(data_from_website.text, StructureJson_Hostkey)
-        self.logger.info('Start Create df for Hostkey sale and gpu servers')
+    def sale_gpu_Competitor2(self, data_from_website):
+        self.validate_json(data_from_website.text, StructureJson_Competitor2)
+        self.logger.info('Start Create df for Competitor2 sale and gpu servers')
         servers = data_from_website.json()['response']
         counter = 0
-        data_hostkey = pd.DataFrame()
+        data_Competitor2 = pd.DataFrame()
         for server in servers:
-            self.validate_json(json.dumps(server), Structure_hostkey_sale)
+            self.validate_json(json.dumps(server), Structure_Competitor2_sale)
             id_config = uuid4()
             cpu = server['hardware']['cpu']['items'][0]
             cpu_name = self.processor.delete_vendor(cpu['name'].replace('xx*', 'XX'))
@@ -443,24 +443,24 @@ class Hostkey:
                           ram_type,
                           disks, datacenter, self.competitor, price, date]
             config_row = pd.Series(config_row, index=self.processor.columns_name, name=counter)
-            data_hostkey = pd.concat([data_hostkey, config_row], axis=1, sort=False)
+            data_Competitor2 = pd.concat([data_Competitor2, config_row], axis=1, sort=False)
             counter += 1
 
-        data_hostkey = data_hostkey.transpose()
-        data_hostkey['hdd_size'], data_hostkey['ssd_size'], data_hostkey['nvme_size'] = zip(
-            *data_hostkey['disks'].apply(self.unpack_disks_hostkey_sale_gpu))
-        data_hostkey = data_hostkey[self.processor.columns_all]
-        return (data_hostkey)
+        data_Competitor2 = data_Competitor2.transpose()
+        data_Competitor2['hdd_size'], data_Competitor2['ssd_size'], data_Competitor2['nvme_size'] = zip(
+            *data_Competitor2['disks'].apply(self.unpack_disks_Competitor2_sale_gpu))
+        data_Competitor2 = data_Competitor2[self.processor.columns_all]
+        return (data_Competitor2)
 
-    def create_df_hostkey(self, data_from_website):
-        self.validate_json(data_from_website.text, StructureJson_Hostkey)
-        self.logger.info('Start Create df for Hostkey base servers')
-        hostkey_servers = data_from_website.json()['response']
-        data_hostkey = pd.DataFrame()
+    def create_df_Competitor2(self, data_from_website):
+        self.validate_json(data_from_website.text, StructureJson_Competitor2)
+        self.logger.info('Start Create df for Competitor2 base servers')
+        Competitor2_servers = data_from_website.json()['response']
+        data_Competitor2y = pd.DataFrame()
         counter = 0
 
-        for server in hostkey_servers:
-            self.validate_json(json.dumps(server), Structure_hostkey)
+        for server in Competitor2_servers:
+            self.validate_json(json.dumps(server), Structure_Competitor2)
             print(server)
             id_config = uuid4()
             cpu_name = self.processor.delete_vendor(server['hardware']['cpu']['description'].replace('xx*', 'XX'))
@@ -485,28 +485,28 @@ class Hostkey:
                           ram_type,
                           disks, datacenter, self.competitor, price, date]
             config_row = pd.Series(config_row, index=self.processor.columns_name, name=counter)
-            data_hostkey = pd.concat([data_hostkey, config_row], axis=1, sort=False)
+            data_Competitor2 = pd.concat([data_Competitor2, config_row], axis=1, sort=False)
             counter += 1
 
-        data_hostkey = data_hostkey.transpose()
-        data_hostkey['hdd_size'], data_hostkey['ssd_size'], data_hostkey['nvme_size'] = zip(
-            *data_hostkey['disks'].apply(self.unpack_disks_hostkey))
-        data_hostkey = data_hostkey[self.processor.columns_all]
-        return data_hostkey
+        data_Competitor2 = data_Competitor2.transpose()
+        data_Competitor2['hdd_size'], data_Competitor2['ssd_size'], data_Competitor2['nvme_size'] = zip(
+            *data_Competitor2['disks'].apply(self.unpack_disks_Competitor2))
+        data_Competitor2 = data_Competitor2[self.processor.columns_all]
+        return data_Competitor2
 
     # преобразование данных
     @task
     def transform_data(self, data_from_website):
-        self.logger.info('Start Hostkey data transforming')
-        d_NL = self.create_df_hostkey(data_from_website[0])
-        d_USA = self.create_df_hostkey(data_from_website[1])
-        d_R = self.create_df_hostkey(data_from_website[2])
-        d_sale = self.sale_gpu_hostkey(data_from_website[3])
-        d_gpu = self.sale_gpu_hostkey(data_from_website[4])
-        res_hostkey = pd.concat([d_NL, d_USA, d_R, d_sale, d_gpu])
-        res_hostkey = res_hostkey.astype(self.processor.data_type)
-        self.logger.info(f'Transformed data of {self.competitor}: {res_hostkey.shape}')
-        return (res_hostkey)
+        self.logger.info('Start Competitor2 data transforming')
+        d_NL = self.create_df_Competitor2(data_from_website[0])
+        d_USA = self.create_df_Competitor2(data_from_website[1])
+        d_R = self.create_df_Competitor2(data_from_website[2])
+        d_sale = self.sale_gpu_Competitor2(data_from_website[3])
+        d_gpu = self.sale_gpu_Competitor2(data_from_website[4])
+        res_Competitor2 = pd.concat([d_NL, d_USA, d_R, d_sale, d_gpu])
+        res_Competitor2 = res_Competitor2.astype(self.processor.data_type)
+        self.logger.info(f'Transformed data of {self.competitor}: {res_Competitor2.shape}')
+        return (res_Competitor2)
 
     # закгрузка в базу данных
     @task
@@ -514,11 +514,11 @@ class Hostkey:
         self.processor.load_to_db(self.competitor, transformed_data)
 
 
-class Servers_ru:
+class Competitor3:
     def __init__(self, logger):
-        self.url = 'https://www.servers.ru/dedicated_servers'
+        self.url = 'https://www.Competitor3/dedicated_servers'
         self.logger = logger
-        self.competitor = 'servers_ru'
+        self.competitor = 'Competitor3'
         self.processor = DataProcessor(logger)
 
     # выгрузка данных с веб-сайта
@@ -617,7 +617,7 @@ class Servers_ru:
 with Flow('load_competitors_data_script') as flow:
     logger = prefect.context.get("logger")
     # создание экземпляров класса для работы с данными конкурентов
-    parsers = [Timeweb(logger), Hostkey(logger), Servers_ru(logger)]
+    parsers = [Competitor1(logger), Competitor2(logger), Competitor3(logger)]
     for parser in parsers:
         # выгрузка данных с веб-сайтов
         data_from_website = parser.extract_data(parser)
