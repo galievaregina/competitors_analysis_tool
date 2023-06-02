@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch, MagicMock
 import pandas as pd
-from flows.comparison import Company, Comparator
+from comparison import Company, Comparator
 from pandas.testing import assert_frame_equal
 
 

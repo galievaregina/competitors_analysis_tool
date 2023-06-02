@@ -3,8 +3,8 @@ import unittest
 import requests
 from unittest.mock import patch, Mock, MagicMock
 from pydantic import ValidationError
-from flows.load_competitors_data_script import DataProcessor, Timeweb, Servers_ru, Hostkey
-from flows.load_competitors_data_script import StructureJson_Timeweb, StructureServer_Timeweb, StructureJson_Hostkey, \
+from load_competitors_data_script import DataProcessor, Timeweb, Servers_ru, Hostkey
+from load_competitors_data_script import StructureJson_Timeweb, StructureServer_Timeweb, StructureJson_Hostkey, \
     Structure_hostkey, Structure_hostkey_sale
 
 
