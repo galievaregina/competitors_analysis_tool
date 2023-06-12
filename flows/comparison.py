@@ -1,6 +1,9 @@
 import subprocess
 import sys
 
+#NOTE: Вот такого в production ready code просто не может быть, осуществлять системный вызов нельзя.
+# Нужно подготавливать файлы requirements.txt
+
 subprocess.check_call([
     sys.executable, '-m', 'pip', 'install', "SQLAlchemy==1.4.45", "pandas", "numpy", "psycopg2-binary", 'pydantic'
 ])
@@ -129,6 +132,7 @@ class Company:
 class Comparator:
     def __init__(self, competitor, logger):
         self.competitor = competitor
+        # NOTE: Ну тут все надо хранить в environ, смотреть образцы из моего кода.
         self.engine_db_competitor_configs = create_engine('postgresql://username:password@localhost/mydatabase')
         self.logger = logger
         self.end_date = date.today()
@@ -266,17 +270,18 @@ class Comparator:
         company_not_gpu, company_gpu = self.split_by_gpu(company_configs)
         competitor_configs_not_gpu, competitor_configs_gpu = self.split_by_gpu(competitor_configs)
         # WITHOU GPU
-        for index, company_config in company_not_gpu.iterrows():
+        # NOTE: Если переменная неиспользуется то лучше ее заменить _
+        for _, company_config in company_not_gpu.iterrows():
             similar = self.compare_configs(competitor_configs_not_gpu, company_config)
-            for i, competitor_config in similar.iterrows():
+            for __, competitor_config in similar.iterrows():
                 config_row = pd.Series(
                     [company_config['id_config'], competitor_config['id_config'], competitor_config['total_match']],
                     index=['company_conf_id', 'competitor_conf_id', 'total_match'], name=counter)
                 matching = pd.concat([matching, config_row], axis=1, sort=False)
                 counter += 1
-        for index, company_config in company_gpu.iterrows():
+        for _, company_config in company_gpu.iterrows():
             similar = self.compare_gpu_configs(competitor_configs_gpu, company_config)
-            for i, competitor_config in similar.iterrows():
+            for __, competitor_config in similar.iterrows():
                 config_row = pd.Series(
                     [company_config['id_config'], competitor_config['id_config'], competitor_config['total_match']],
                     index=['company_conf_id', 'competitor_conf_id', 'total_match'], name=counter)
@@ -293,6 +298,7 @@ class Comparator:
         existing_matching = new_matching.merge(config_matching_db, on=['company_conf_id', 'competitor_conf_id'],
                                                how='inner')
         add_to_db = new_matching
+        # NOTE: Если переменная неиспользуется то лучше ее заменить _
         if ~existing_matching.empty:
             for index, row in existing_matching.iterrows():
                 add_to_db = add_to_db.loc[(add_to_db['company_conf_id'] != row['company_conf_id']) & (

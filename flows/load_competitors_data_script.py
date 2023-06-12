@@ -1,6 +1,9 @@
 import subprocess
 import sys
 
+#NOTE: Вот такого в production ready code просто не может быть, осуществлять системный вызов нельзя.
+# Нужно подготавливать файлы requirements.txt
+
 subprocess.check_call([
     sys.executable, '-m', 'pip', 'install', "beautifulsoup4", "SQLAlchemy==1.4.45", "pandas", "numpy",
     "requests", "psycopg2-binary", 'pydantic', 'typing'
@@ -20,7 +23,7 @@ from prefect import task, Flow
 from pydantic import BaseModel, ValidationError
 from typing import Optional
 
-
+#NOTE: Объекты, классы, модели, вынести в отдельный файл. Также в файле не присутствует if def main -> смотреть мой файл, может привести к неправильному использованию скрипта.
 class DataProcessor:
     def __init__(self, logger):
         self.logger = logger
@@ -90,6 +93,7 @@ class DataProcessor:
         list_columns = ['cpu_model_1', 'cpu_model_2', 'cpu_gen', 'cpu_count', 'gpu', 'gpu_count', 'cores', 'frequency',
                         'ram', 'ram_type', 'hdd_size', 'ssd_size', 'nvme_size', 'datacenter', 'provider']
         self.logger.info(f'Start loading data to DB')
+        # NOTE: SQL Injection warning. Но может и не ворнинг, но я бы использовал ORM. Хотя это тоже ORM от pandas X_X.
         last_config = pd.read_sql_query(f"SELECT * FROM configs WHERE provider = '{provider}'", con=self.engine)
         merge = data_from_website.merge(last_config, on=list_columns, how='left')
         merge = merge.rename(columns={'id_config_x': 'id_config', 'id_config_y': 'last_id'})
@@ -109,11 +113,13 @@ class DataProcessor:
         self.logger.info(f'End loading data to DB')
 
 
-# Эталонные структуры json для сайтов, позволяющие получить данные через API
+# NOTE: Эталонные структуры json для сайтов не нужны,
+# много потраченного времени, нужна только
+# финишная pydantic модель которую например можно было отдать мне. :)
 class StructureJson_Competitor1(BaseModel):
     body: list
 
-
+# NOTE: В классах не нижних подчеркиваний, смотри PEP, который прислал в своем образце.
 class StructureServer_Competitor1(BaseModel):
     cpu_vendor_short: str
     cpu_cores: int
@@ -143,8 +149,14 @@ class Structure_hardware_Competitor2(BaseModel):
     ram: Structure_ram_Competitor2
     hard_drive: Structure_hard_drive_Competitor2
 
-
+# NOTE: Одинаковые классы, можно использовать один
 class Structure_conditions_Competitor2(BaseModel):
+    items: list
+
+class Structure_hard_drive_Competitor2_sale(BaseModel):
+    items: list
+
+class Structure_conditions_Competitor2_sale(BaseModel):
     items: list
 
 
@@ -170,10 +182,6 @@ class Structure_ram_Competitor2_sale(BaseModel):
     type: str
 
 
-class Structure_hard_drive_Competitor2_sale(BaseModel):
-    items: list
-
-
 class Structure_graphics_Competitor2_gpu(BaseModel):
     items: str
     number: int
@@ -184,10 +192,6 @@ class Structure_hardware_Competitor2_sale(BaseModel):
     ram: Structure_ram_Competitor2_sale
     hard_drive: Structure_hard_drive_Competitor2_sale
     graphics: Optional[Structure_graphics_Competitor2_gpu] = None
-
-
-class Structure_conditions_Competitor2_sale(BaseModel):
-    items: list
 
 
 class Structure_common_Competitor2_sale(BaseModel):
@@ -207,14 +211,18 @@ class StructureJson_Competitor2(BaseModel):
 class Competitor1:
     def __init__(self, logger):
         self.url = 'https://Competitor1.cloud/v1.1/registration/servers'
+        # NOTE: Если все в одном файле вообще не понимаю зачем наследование logger и перекидывание его туда сюда,
+        # если в нем ничего не настроено. Смотреть мой файл как пример настройки logger'a.
         self.logger = logger
+        # NOTE: отсутвие типизации приведет к проблемам, например объект класса logger ниже не имеет типизации. Хотя класс python.
         self.competitor = 'Competitor1'
         self.processor = DataProcessor(logger)
 
+    # NOTE: У функций есть описание их работы. Смотреть мой файл как образец. Один моментик поправил для примера.
     # выгрузка данных с веб-сайта
     @task(max_retries=10, retry_delay=timedelta(seconds=10))
     def extract_data(self):
-        # Выгрузка данных с веб-сайта
+        """Выгрузка данных c веб-сайта"""
         return self.processor.extract_data_from_website(self.url)
 
     # валидация структуры json
@@ -222,6 +230,8 @@ class Competitor1:
         try:
             structure.parse_raw(data)
         except ValidationError as e:
+            # NOTE: Передала логгер, но ошибки выводишь в print 👍
+            self.logger.error(e.errors())
             print(e.errors())
             raise SystemExit(e)
 
@@ -246,11 +256,13 @@ class Competitor1:
                 disk = disk.lower()
                 disk = disk.split(' ')
                 if disk[3] == 'тб':
+                    # NOTE: Same shit bro ✋, TB в GB
                     size = int(disk[0]) * int(disk[2]) * 1000
                 else:
                     size = int(disk[0]) * int(disk[2])
                 if disk[4] == 'hdd':
                     output[disk[4]] = size
+                # NOTE: А в чем смысл ☁️, код делает одно и тоже
                 elif disk[4] == 'ssd':
                     output[disk[4]] = size
                 else:
@@ -268,7 +280,7 @@ class Competitor1:
 
         for server in servers:
             self.validate_json(json.dumps(server), StructureServer_Competitor1)
-            id_config = uuid4()
+            id_config = uuid4() # NOTE: Ну если только ID конфига как понимания, но можно не хранить в отдельной переменной.
             cpu_name = self.processor.delete_vendor(server['cpu_vendor_short'])
             cpu_name_parts = self.processor.get_cpu_count(cpu_name)
             cpu_name = cpu_name_parts[0]
@@ -287,6 +299,7 @@ class Competitor1:
             config_row = [id_config, cpu_model_1, cpu_model_2, cpu_gen, cpu_count,
                           gpu, gpu_count, cores, freq, ram, ram_type, disks,
                           datacenter, self.competitor, price, date]
+            # NOTE: Я в pandas почти ничего не понимаю, но выглядит прикольно 💯
             config_row = pd.Series(config_row, index=self.processor.columns_name, name=counter)
             transformed_data = pd.concat([transformed_data, config_row],
                                          axis=1, sort=False)
@@ -294,11 +307,13 @@ class Competitor1:
 
         transformed_data = transformed_data.transpose()
         transformed_data['hdd_size'], transformed_data['ssd_size'], transformed_data['nvme_size'], \
+        # NOTE: А для чего так сложно, вворачивание в два объекта через zip, почему тут disks, а там gpu и gpu_count 😮‍💨
         transformed_data['gpu'], transformed_data['gpu_count'] = zip(
             *transformed_data['disks'].apply(self.unpack_disks))
 
         transformed_data = transformed_data[self.processor.columns_all]
         transformed_data = transformed_data.astype(self.processor.data_type)
+        # NOTE: Правильна, но нет типизации 🏗️
         self.logger.info(f'Transformed data of {self.competitor}: {transformed_data.shape}')
         return transformed_data
 
@@ -327,6 +342,7 @@ class Competitor2:
         data_from_website = []
         urls = self.url
         for url in urls:
+            # NOTE: Тут буква c из другого алфавита
             self.logger.info(f'Start сonnection to {url}')
             try:
                 servers = requests.get(url)
@@ -376,6 +392,7 @@ class Competitor2:
                 size = 1000 * float(size) * arg
             else:
                 size = float(size) * arg
+            # NOTE: Три условия делают одно и тоже 😄
             if disks[1] == 'hdd':
                 output[disks[1]] = size
             if disks[1] == 'ssd':
@@ -384,6 +401,7 @@ class Competitor2:
                 output[disks[1]] = size
         return output['hdd'], output['ssd'], output['nvme']
 
+    #NOTE: Смотреть в PEP как писать фунции, там не долнжо быть больших буков. Образец и ссылки в моем коде.
     def unpack_disks_Competitor2_sale_gpu(self, disks):
         output = {
             'hdd': 0,
@@ -447,6 +465,7 @@ class Competitor2:
             counter += 1
 
         data_Competitor2 = data_Competitor2.transpose()
+        # NOTE: Вот тут диски в диски пошли 🚶
         data_Competitor2['hdd_size'], data_Competitor2['ssd_size'], data_Competitor2['nvme_size'] = zip(
             *data_Competitor2['disks'].apply(self.unpack_disks_Competitor2_sale_gpu))
         data_Competitor2 = data_Competitor2[self.processor.columns_all]
@@ -456,11 +475,12 @@ class Competitor2:
         self.validate_json(data_from_website.text, StructureJson_Competitor2)
         self.logger.info('Start Create df for Competitor2 base servers')
         Competitor2_servers = data_from_website.json()['response']
-        data_Competitor2y = pd.DataFrame()
+        data_Competitor2y = pd.DataFrame() # NOTE: Неиспользуемая переменная. Используй проверку и форматирование кода black, isort, pylance. 🐬
         counter = 0
 
         for server in Competitor2_servers:
             self.validate_json(json.dumps(server), Structure_Competitor2)
+            # NOTE: Какой-то принт зачесался 💇‍♂️
             print(server)
             id_config = uuid4()
             cpu_name = self.processor.delete_vendor(server['hardware']['cpu']['description'].replace('xx*', 'XX'))
@@ -560,6 +580,18 @@ class Competitor3:
         for server in servers:
             id_config = uuid4()
             # Находим первый элементы <span> с классом 'b-dedicated-servers-list-item__title' с помощью метода find()
+
+
+
+
+
+
+
+            #NOTE: Такое количества кода почти нечитаемое 😸, побольше функций.
+
+
+
+
             # и получаем его содержимое выполнив get_text().
             cpu_name = \
                 server.find('span', class_='b-dedicated-servers-list-item__title').get_text().strip().split('сервера')[
@@ -609,6 +641,7 @@ class Competitor3:
         return transformed_data
 
     # загрузка в базу данных
+    # NOTE: upload_to_db, правильнее.
     @task
     def load_to_db(self, transformed_data):
         self.processor.load_to_db(self.competitor, transformed_data)
