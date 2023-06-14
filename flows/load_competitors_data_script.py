@@ -594,11 +594,14 @@ def load_to_db(competitor, provider_name, transformed_data):
     return competitor.load_to_db(provider_name, transformed_data)
 
 
-# Создание flow Prefect
-with Flow('load_competitors_data_script') as flow:
-    logger = prefect.context.get("logger")
-    competitors_list = [Competitor1(logger), Competitor2(logger), Competitor3(logger)]
-    for competitor in competitors_list:
-        data_from_website = extract_data(competitor)
-        transformed_data = transform_data(competitor, data_from_website)
-        load_to_db(competitor, competitor.name, transformed_data)
+if __name__ == "__main__":
+    # Создание flow Prefect
+    with Flow('load_competitors_data_script') as flow:
+        logger = prefect.context.get("logger")
+        competitors_list = [Competitor1(logger), Competitor2(logger), Competitor3(logger)]
+        for competitor in competitors_list:
+            data_from_website = extract_data(competitor)
+            transformed_data = transform_data(competitor, data_from_website)
+            load_to_db(competitor, competitor.name, transformed_data)
+    #локальный запуск flow
+    flow.run()
