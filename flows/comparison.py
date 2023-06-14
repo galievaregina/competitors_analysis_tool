@@ -1,10 +1,3 @@
-import subprocess
-import sys
-
-subprocess.check_call([
-    sys.executable, '-m', 'pip', 'install', "SQLAlchemy==1.4.45", "pandas", "numpy", "psycopg2-binary", 'pydantic'
-])
-
 from datetime import date, timedelta
 import pandas as pd
 from sqlalchemy import create_engine
@@ -13,6 +6,9 @@ import prefect
 
 
 class Company:
+    """Класс Company содержит функции для выгрузки и приведения данных компании к структуре DataFrame,
+    которая используются при обработке данных конкурентов  """
+
     def __init__(self, logger):
         self.columns_name = ['id_config', 'cpu_model_1', 'cpu_model_2', 'cpu_gen', 'cpu_count', 'gpu', 'gpu_count',
                              'cores',
@@ -28,23 +24,26 @@ class Company:
                           'hdd_size': int,
                           'ssd_size': int,
                           'nvme_size': int, 'price': float}
+        # Подключение к внутренней БД компании, где хранится информация о конфигурациях компании
         self.engine_company_db = create_engine('postgresql://username:password@localhost/mydatabase')
         self.logger = logger
 
     @task
     def get_data_from_company_db(self):
-        company_data = pd.read_sql_query('SELECT hss.cpu_name, hss.cpu_base_freq, hss.cpu_count,'
-                                         ' hss.cores_per_cpu, hss.gpu_name,hss.gpu_count, hss.disk, '
-                                         'hss.ram, hs.multi_lang_name as id_config, hs.price_collection as price '
-                                         'FROM havik_service_server hss '
-                                         'LEFT JOIN havik_service hs '
-                                         'ON hs.uuid = hss.uuid WHERE hs.state_id in (1,2,4)',
+        """Получение данных из БД о конфигурациях компании"""
+        company_data = pd.read_sql_query('SELECT cpu_name, cpu_base_freq, cpu_count,'
+                                         ' cores_per_cpu, gpu_name, gpu_count, disk, '
+                                         'ram, multi_lang_name as id_config, price_collection as price '
+                                         'FROM hhz '
+                                         'LEFT JOIN hz '
+                                         'ON hhz.uuid = hz.uuid WHERE hz.state_id in (1,2,4)',
                                          con=self.engine_company_db)
         company_data = company_data.to_dict("records")
         self.logger.info(f'Data from internal db: {company_data}')
         return company_data
 
     def unpack_disks_company(self, disks):
+        """Извлечение информации об объеме каждого типа дисков"""
         output = {
             'hdd': 0,
             'ssd': 0,
@@ -62,11 +61,13 @@ class Company:
         return output['hdd'], output['ssd'], output['nvme']
 
     def delete_vendor(self, cpu_name):
+        """Удаление вендора процессора"""
         cpu_name = cpu_name.replace(r'AMD', ' ').strip()
         cpu_name = cpu_name.replace(r'Intel', ' ').strip()
         return cpu_name
 
     def get_data_cpu(self, cpu_name):
+        """Получение данных о модели и поколении процессора"""
         cpu_name = cpu_name.upper()
         x = cpu_name.split('-')
         if len(x) > 1:
@@ -86,6 +87,7 @@ class Company:
 
     @task
     def transform_company_data(self, company_data):
+        """Извлечение и приведение к единой структуре DataFrame выгруженных данных"""
         counter = 0
         data_company = pd.DataFrame()
         for server in company_data:
@@ -127,23 +129,28 @@ class Company:
 
 
 class Comparator:
+    """Класс Comparator содержит функции для подбора схожих конфигураций с GPU и без у компании и одного из конкурентов"""
+
     def __init__(self, competitor, logger):
         self.competitor = competitor
+        # Подключение к БД с информацией о конкурентах
         self.engine_db_competitor_configs = create_engine('postgresql://username:password@localhost/mydatabase')
         self.logger = logger
         self.end_date = date.today()
         self.start_date = self.end_date - timedelta(days=30)
+        # Получение данных о конфигурациях конкурента
         self.competitor_configs = pd.read_sql_query(f"SELECT * "
                                                     f"FROM configs "
                                                     f"RIGHT JOIN (SELECT id_config as p_id, price,date "
-                                                                f"FROM price "
-                                                                f"WHERE date "
-                                                                f"BETWEEN '{self.start_date}' AND '{self.end_date}') as p "
+                                                    f"FROM price "
+                                                    f"WHERE date "
+                                                    f"BETWEEN '{self.start_date}' AND '{self.end_date}') as p "
                                                     f"ON configs.id_config = p.p_id "
                                                     f"WHERE provider = '{self.competitor}';",
                                                     con=self.engine_db_competitor_configs)
 
     def compare_disks(self, config, similar):
+        """Подбор "схожих" параметров дисков"""
         if config['nvme_size'] != 0:
             similar = similar.loc[similar['nvme_size'] != 0]
         else:
@@ -166,6 +173,7 @@ class Comparator:
         return similar
 
     def compare_gen(self, config, similar):
+        """Подбор конфигураций со "схожими" поколениями"""
         if config['cpu_model_2'] == 'SILVER' or config['cpu_model_2'] == 'GOLD':
             if config['cpu_gen'][1:2] == '1' or config['cpu_gen'][1:2] == '2':
                 return similar.loc[(similar['cpu_gen'].str[1:2] == '1') | (similar['cpu_gen'].str[1:2] == '2')]
@@ -183,11 +191,13 @@ class Comparator:
             return similar
 
     def split_by_gpu(self, df):
+        """Разделение набора конфигураций на две части: с GPU и без"""
         df_not_gpu = df.loc[df['gpu_count'] == 0]
         df_gpu = df.loc[df['gpu_count'] != 0]
         return [df_not_gpu, df_gpu]
 
     def compare_configs(self, competitor_configs, company_config):
+        """Подбор схожих конфигураций без GPU"""
         if company_config['cpu_model_2'] == 'SILVER' or company_config['cpu_model_2'] == 'GOLD':
             similar = competitor_configs.loc[
                 (competitor_configs['cpu_model_2'] == 'SILVER') | (competitor_configs['cpu_model_2'] == 'GOLD')]
@@ -200,16 +210,18 @@ class Comparator:
         similar = similar.loc[(similar['cpu_model_1'] == company_config['cpu_model_1'])
                               & (similar['cpu_count'] == company_config['cpu_count'])
                               & (similar['cores'] == company_config['cores'])]
+        # Ищем полное совпадение
         total_match = similar.loc[(similar['cpu_gen'] == company_config['cpu_gen'])
                                   & (similar['ram'] == company_config['ram']) & (
                                           similar['hdd_size'] == company_config['hdd_size'])
                                   & (similar['ssd_size'] == company_config['ssd_size']) & (
                                           similar['nvme_size'] == company_config['nvme_size'])
                                   & (similar['frequency'] == company_config['frequency'])]
+        # Если не найдено полного совпадение, подбираем конфигураций с отличиями по некоторым параметрам
         if total_match.empty:
-            # cpu_gen
+            # Подбираем конфигурации по поколению
             similar = self.compare_gen(company_config, similar)
-            # ram_size
+            # Подбираем конфигурации по объему RAM
             if company_config['ram'] < 128:
                 similar = similar.loc[
                     (similar['ram'] >= company_config['ram'] / 2) & (similar['ram'] <= company_config['ram'] * 2)]
@@ -220,17 +232,19 @@ class Comparator:
             min_diff = similar['diff_ram_size'].min()
             similar = similar.loc[similar['diff_ram_size'] == min_diff]
             del similar['diff_ram_size']
-            # disks type and near size
+            # Подбираем конфигурации по объему дисков
             similar = self.compare_disks(company_config, similar)
             if not similar.loc[similar['frequency'] == company_config['frequency']].empty:
                 similar = similar.loc[similar['frequency'] == company_config['frequency']]
-            similar['total_match'] = 0
+            similar['total_match'] = 0  # total_match = 0 - не полное соответствие конфигураций
         else:
             similar = total_match
-            similar['total_match'] = 1
+            similar['total_match'] = 1  # total_match = 1 - полное соответствие конфигураций
         return similar
 
     def compare_gpu_configs(self, competitor_config, company_config):
+        """Подбор схожих конфигураций с GPU"""
+        similar = pd.DataFrame()
         gpu_analogs = {'RTX A2000': ['GTX 1660', 'RTX 2050', 'RTX 2060', 'RTX 4050'],
                        'GTX 1080': ['GTX 1070', 'RTX 2070', 'RTX 3050', 'RTX 3060', 'RTX 3070'],
                        'RTX 2080': ['RTX 3080'],
@@ -258,14 +272,16 @@ class Comparator:
 
     @task
     def find_similar_configs(self, company_configs):
+        """Объединяем подбор конфигураций с GPU и без"""
         competitor_configs = self.competitor_configs.sort_values('date').drop_duplicates(subset=['id_config'],
                                                                                          keep='last')
         del competitor_configs['p_id'], competitor_configs['date']
-        matching = pd.DataFrame()
+        matching = pd.DataFrame()  # для сохранения соответсвий схожих конфигураций
         counter = 0
+        # делим набор конфигураций на две части: с GPU и без
         company_not_gpu, company_gpu = self.split_by_gpu(company_configs)
         competitor_configs_not_gpu, competitor_configs_gpu = self.split_by_gpu(competitor_configs)
-        # WITHOU GPU
+        # Итерация по списку серверов компании без GPU и подбор аналогов у конкурента
         for index, company_config in company_not_gpu.iterrows():
             similar = self.compare_configs(competitor_configs_not_gpu, company_config)
             for i, competitor_config in similar.iterrows():
@@ -274,6 +290,7 @@ class Comparator:
                     index=['company_conf_id', 'competitor_conf_id', 'total_match'], name=counter)
                 matching = pd.concat([matching, config_row], axis=1, sort=False)
                 counter += 1
+        # Итерация по списку серверов компании с GPU и подбор аналогов у конкурента
         for index, company_config in company_gpu.iterrows():
             similar = self.compare_gpu_configs(competitor_configs_gpu, company_config)
             for i, competitor_config in similar.iterrows():
@@ -288,26 +305,33 @@ class Comparator:
 
     @task
     def load_to_db(self, new_matching):
+        """Загружаем соответсвие в таблицу competitors_configs_matching"""
         config_matching_db = pd.read_sql_query(f"SELECT * FROM competitors_configs_matching;",
                                                con=self.engine_db_competitor_configs)
         existing_matching = new_matching.merge(config_matching_db, on=['company_conf_id', 'competitor_conf_id'],
                                                how='inner')
         add_to_db = new_matching
+        # проверяем, не хранится ли уже соответсвие в таблице competitors_configs_matching
         if ~existing_matching.empty:
             for index, row in existing_matching.iterrows():
                 add_to_db = add_to_db.loc[(add_to_db['company_conf_id'] != row['company_conf_id']) & (
                         add_to_db['competitor_conf_id'] != row['competitor_conf_id'])]
         self.logger.info(f'New configs matching: {add_to_db}')
+        # загружаем новые найденные соответсвия в таблицу competitors_configs_matching
         add_to_db.to_sql('competitors_configs_matching', self.engine_db_competitor_configs, if_exists='append',
                          index=False)
 
 
+# создаем Flow
 with Flow('comparison_with_company') as comparison:
     logger = prefect.context.get("logger")
+    # получаем данные о конфигурациях компании
     company_data_transformer = Company(logger)
     company_data = company_data_transformer.get_data_from_company_db(company_data_transformer)
     company_data = company_data_transformer.transform_company_data(company_data_transformer, company_data)
-    comparators = [Comparator('Competitor1', logger), Comparator('Competitor2', logger), Comparator('Competitor3', logger)]
+    comparators = [Comparator('Competitor1', logger), Comparator('Competitor2', logger),
+                   Comparator('Competitor3', logger)]
+    # подбираем для конфигураций компании схожие у каждого конкурента
     for comparator in comparators:
         new_matching = comparator.find_similar_configs(comparator, company_data)
         comparator.load_to_db(comparator, new_matching)

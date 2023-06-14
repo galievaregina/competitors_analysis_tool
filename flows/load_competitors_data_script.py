@@ -1,11 +1,3 @@
-import subprocess
-import sys
-
-subprocess.check_call([
-    sys.executable, '-m', 'pip', 'install', "beautifulsoup4", "SQLAlchemy==1.4.45", "pandas", "numpy",
-    "requests", "psycopg2-binary", 'pydantic', 'typing'
-])
-
 from datetime import date, timedelta
 import json
 import time
@@ -22,8 +14,9 @@ from typing import Optional
 
 
 class DataProcessor:
-    def __init__(self, logger):
-        self.logger = logger
+    """Класс DataProcessor содержит вспомогательные методы по очистке данных, полученных с веб-сайтов конкурентов"""
+
+    def __init__(self):
         self.current_date = date.today()
         self.columns_name = ['id_config', 'cpu_model_1', 'cpu_model_2', 'cpu_gen', 'cpu_count', 'gpu', 'gpu_count',
                              'cores', 'frequency', 'ram', 'ram_type', 'disks', 'datacenter', 'provider', 'price',
@@ -35,27 +28,15 @@ class DataProcessor:
                           'gpu': object, 'gpu_count': int, 'cores': int, 'frequency': float, 'ram': int,
                           'ram_type': str, 'hdd_size': int, 'ssd_size': int, 'nvme_size': int, 'datacenter': str,
                           'provider': str, 'price': float, 'date': object}
-        self.engine = create_engine('postgresql://username:password@localhost/mydatabase')
 
-    # выгрузка данных с веб-сайта
-    def extract_data_from_website(self, url):
-        self.logger.info(f'Start сonnection to {url}')
-        try:
-            servers = requests.get(url)
-            self.logger.info(f'Successful connection to {url} {servers}')
-        except requests.exceptions.HTTPError as err:
-            time.sleep(10)
-            raise SystemExit(err)
-        self.logger.info(f'Extracted data from website{servers.text}')
-        return servers
-
-    # вспомогательные фуннкции по обработке данных
     def delete_vendor(self, cpu_name):
+        """Удаление наименования вендора процессора"""
         cpu_name = cpu_name.replace(r'AMD', ' ').strip()
         cpu_name = cpu_name.replace(r'Intel', ' ').strip()
         return cpu_name
 
     def get_cpu_count(self, cpu_name):
+        """Получение количества процессоров в конфигурации"""
         parts = cpu_name.split('x')
         if len(parts) > 1:
             cpu_count = int(parts[0])
@@ -65,6 +46,7 @@ class DataProcessor:
         return [cpu_name.strip(), cpu_count]
 
     def get_data_cpu(self, cpu_name):
+        """Получение данных о модели и поколении процессора"""
         cpu_name = cpu_name.upper()
         x = cpu_name.split('-')
         if len(x) > 1:
@@ -85,12 +67,35 @@ class DataProcessor:
         res = [cpu_model, cpu_gen1, cpu_gen2]
         return res
 
-    # загрузка в базу данных
+
+class DataHandler:
+    """Класс DataHandler содержит общие функции для выгрузки содержимого страниц
+    с веб-сайтов конкурентов и сохранения в БД"""
+
+    def __init__(self, logger):
+        self.logger = logger
+        # Подключение к БД, где хранится информация о конкурентах
+        self.engine = create_engine('postgresql://username:password@localhost/mydatabase')
+
+    def extract_data_from_website(self, url):
+        """Выгрузка данных с веб-сайта"""
+        self.logger.info(f'Start connection to {url}')
+        try:
+            servers = requests.get(url)
+            self.logger.info(f'Successful connection to {url} {servers}')
+        except requests.exceptions.HTTPError as err:
+            time.sleep(10)
+            raise SystemExit(err)
+        self.logger.info(f'Extracted data from website{servers.text}')
+        return servers
+
     def load_to_db(self, provider, data_from_website):
+        """Загрузка в таблицы Базы Данных"""
         list_columns = ['cpu_model_1', 'cpu_model_2', 'cpu_gen', 'cpu_count', 'gpu', 'gpu_count', 'cores', 'frequency',
                         'ram', 'ram_type', 'hdd_size', 'ssd_size', 'nvme_size', 'datacenter', 'provider']
-        self.logger.info(f'Start loading data to DB')
+        self.logger.info(f'Start uploading data to DB {provider}')
         last_config = pd.read_sql_query(f"SELECT * FROM configs WHERE provider = '{provider}'", con=self.engine)
+        # Проверка выгруженных конфигурация на наличие в таблице configs БД
         merge = data_from_website.merge(last_config, on=list_columns, how='left')
         merge = merge.rename(columns={'id_config_x': 'id_config', 'id_config_y': 'last_id'})
         price = merge.loc[~merge['last_id'].isna()]
@@ -100,21 +105,31 @@ class DataProcessor:
         if ~new_data.empty:
             list_columns.insert(0, 'id_config')
             new_config = new_data[list_columns]
+            # Добавляем новые конфигурации в таблицу configs
             new_config.to_sql('configs', self.engine, if_exists='append', index=False)
             self.logger.info(f'Added new configs of {provider}: {new_config.shape}')
             new_price = new_data[['id_config', 'price', 'date']]
             price = pd.concat([price, new_price])
         self.logger.info(f'Added prices {provider}: {price.shape}')
+        # Добавляем информацию о ценах в таблицу price
         price.to_sql('price', self.engine, if_exists='append', index=False)
-        self.logger.info(f'End loading data to DB')
+        self.logger.info(f'End loading data to DB {provider}')
+
+    def validate_json(self, data, structure):
+        """Проверка JSON на соответствие эталонной структуре"""
+        try:
+            structure.parse_raw(data)
+        except ValidationError as e:
+            self.logger.error(e.errors())
+            raise SystemExit(e)
 
 
-# Эталонные структуры json для сайтов, позволяющие получить данные через API
-class StructureJson_Competitor1(BaseModel):
+# Эталонные структуры json для Competitor1
+class StructureJsonCompetitor1(BaseModel):
     body: list
 
 
-class StructureServer_Competitor1(BaseModel):
+class StructureServerCompetitor1(BaseModel):
     cpu_vendor_short: str
     cpu_cores: int
     cpu_vendor: str
@@ -124,109 +139,21 @@ class StructureServer_Competitor1(BaseModel):
     price: str
 
 
-class Structure_cpu_Competitor2(BaseModel):
+class StructureCpuCompetitor2(BaseModel):
     description: str
     number_cores: int
     items: list
 
 
-class Structure_ram_Competitor2(BaseModel):
-    volume: int
-
-
-class Structure_hard_drive_Competitor2(BaseModel):
-    description: str
-
-
-class Structure_hardware_Competitor2(BaseModel):
-    cpu: Structure_cpu_Competitor2
-    ram: Structure_ram_Competitor2
-    hard_drive: Structure_hard_drive_Competitor2
-
-
-class Structure_conditions_Competitor2(BaseModel):
-    items: list
-
-
-class Structure_common_Competitor2(BaseModel):
-    location: str
-    conditions: Structure_conditions_Competitor2
-
-
-class Structure_Competitor2(BaseModel):
-    common: Structure_common_Competitor2
-    hardware: Structure_hardware_Competitor2
-
-
-class Structure_cpu_Competitor2_sale(BaseModel):
-    description: str
-    number: int
-    number_cores: int
-    items: list
-
-
-class Structure_ram_Competitor2_sale(BaseModel):
-    volume: int
-    type: str
-
-
-class Structure_hard_drive_Competitor2_sale(BaseModel):
-    items: list
-
-
-class Structure_graphics_Competitor2_gpu(BaseModel):
-    items: str
-    number: int
-
-
-class Structure_hardware_Competitor2_sale(BaseModel):
-    cpu: Structure_cpu_Competitor2_sale
-    ram: Structure_ram_Competitor2_sale
-    hard_drive: Structure_hard_drive_Competitor2_sale
-    graphics: Optional[Structure_graphics_Competitor2_gpu] = None
-
-
-class Structure_conditions_Competitor2_sale(BaseModel):
-    items: list
-
-
-class Structure_common_Competitor2_sale(BaseModel):
-    location: str
-    conditions: Structure_conditions_Competitor2_sale
-
-
-class Structure_Competitor2_sale(BaseModel):
-    common: Structure_common_Competitor2_sale
-    hardware: Structure_hardware_Competitor2_sale
-
-
-class StructureJson_Competitor2(BaseModel):
-    response: list
-
-
-class Competitor1:
+class Competitor1(DataHandler):
     def __init__(self, logger):
-        self.url = 'https://Competitor1.cloud/v1.1/registration/servers'
-        self.logger = logger
-        self.competitor = 'Competitor1'
-        self.processor = DataProcessor(logger)
+        super().__init__(logger)
+        self.url = 'url'
+        self.name = 'Competitor1'
+        self.processor = DataProcessor()
 
-    # выгрузка данных с веб-сайта
-    @task(max_retries=10, retry_delay=timedelta(seconds=10))
-    def extract_data(self):
-        # Выгрузка данных с веб-сайта
-        return self.processor.extract_data_from_website(self.url)
-
-    # валидация структуры json
-    def validate_json(self, data, structure):
-        try:
-            structure.parse_raw(data)
-        except ValidationError as e:
-            print(e.errors())
-            raise SystemExit(e)
-
-    # извлчение информации об объеме разных типов дисков и о графическом процессоре
     def unpack_disks(self, disks):
+        """Извлечение информации об объеме разных типов дисков и о графическом процессоре"""
         output = {
             'hdd': 0,
             'ssd': 0,
@@ -257,17 +184,18 @@ class Competitor1:
                     output[disk[4]] = size
         return output['hdd'], output['ssd'], output['nvme'], output['gpu'], output['gpu_count']
 
-    # извлечение и структурирование выгруженных данных
-    @task
     def transform_data(self, data_from_website):
-        self.validate_json(data_from_website.text, StructureJson_Competitor1)
-        self.logger.info('Start data transforming')
+        """Извлечение и приведение к единой структуре DataFrame выгруженных данных"""
+        self.validate_json(data_from_website.text, StructureJsonCompetitor1)
+        self.logger.info(f'Start data transforming {self.name}')
+        # Преобразование полученного через API JSON в словарь Python и получение списка серверов
         servers = data_from_website.json()['body']
         transformed_data = pd.DataFrame()
         counter = 0
 
+        # итерация по списку серверов, для получения параметров каждой конфигурации
         for server in servers:
-            self.validate_json(json.dumps(server), StructureServer_Competitor1)
+            self.validate_json(json.dumps(server), StructureServerCompetitor1)
             id_config = uuid4()
             cpu_name = self.processor.delete_vendor(server['cpu_vendor_short'])
             cpu_name_parts = self.processor.get_cpu_count(cpu_name)
@@ -286,7 +214,7 @@ class Competitor1:
             datacenter = None
             config_row = [id_config, cpu_model_1, cpu_model_2, cpu_gen, cpu_count,
                           gpu, gpu_count, cores, freq, ram, ram_type, disks,
-                          datacenter, self.competitor, price, date]
+                          datacenter, self.name, price, date]
             config_row = pd.Series(config_row, index=self.processor.columns_name, name=counter)
             transformed_data = pd.concat([transformed_data, config_row],
                                          axis=1, sort=False)
@@ -299,55 +227,98 @@ class Competitor1:
 
         transformed_data = transformed_data[self.processor.columns_all]
         transformed_data = transformed_data.astype(self.processor.data_type)
-        self.logger.info(f'Transformed data of {self.competitor}: {transformed_data.shape}')
+        self.logger.info(f'Transformed data of {self.name}: {transformed_data.shape}')
         return transformed_data
 
-    # загрузка в базу данных
-    @task
-    def load_to_db(self, transformed_data):
-        self.processor.load_to_db(self.competitor, transformed_data)
+
+# Эталонные структуры json для Competitor2
+class StructureRamCompetitor2(BaseModel):
+    volume: int
 
 
-class Competitor2:
+class StructureHardDriveCompetitor2(BaseModel):
+    description: str
+
+
+class StructureHardwareCompetitor2(BaseModel):
+    cpu: StructureCpuCompetitor2
+    ram: StructureRamCompetitor2
+    hard_drive: StructureHardDriveCompetitor2
+
+
+class StructureItemsCompetitor2(BaseModel):
+    items: list
+
+
+class StructureCommonCompetitor2(BaseModel):
+    location: str
+    conditions: StructureItemsCompetitor2
+
+
+class StructureCompetitor2(BaseModel):
+    common: StructureCommonCompetitor2
+    hardware: StructureHardwareCompetitor2
+
+
+class StructureCpuCompetitor2Sale(BaseModel):
+    description: str
+    number: int
+    number_cores: int
+    items: list
+
+
+class StructureRamCompetitor2Sale(BaseModel):
+    volume: int
+    type: str
+
+
+class StructureGraphicsCompetitor2(BaseModel):
+    items: str
+    number: int
+
+
+class StructureHardwareCompetitor2Sale(BaseModel):
+    cpu: StructureCpuCompetitor2Sale
+    ram: StructureRamCompetitor2Sale
+    hard_drive: StructureItemsCompetitor2
+    graphics: Optional[StructureGraphicsCompetitor2] = None
+
+
+class StructureCommonCompetitor2Sale(BaseModel):
+    location: str
+    conditions: StructureItemsCompetitor2
+
+
+class StructureCompetitor2Sale(BaseModel):
+    common: StructureCommonCompetitor2Sale
+    hardware: StructureHardwareCompetitor2Sale
+
+
+class StructureJsonCompetitor2(BaseModel):
+    response: list
+
+
+class Competitor2(DataHandler):
     def __init__(self, logger):
+        super().__init__(logger)
         self.url = [
-            'https://api.Competitor2.com/v1/inv-api/get-presets-list?tag=bm&netag=web_noru,web_nosite&location=NL&currency=rub&pricerate=1&currencycon=br&servertype=1&filter=no&language=ru&invapi=yes',
-            'https://api.Competitor2.com/v1/inv-api/get-presets-list?tag=bm&netag=web_noru,web_nosite&location=US&currency=rub&pricerate=1&currencycon=br&servertype=1&filter=no&language=ru&invapi=yes',
-            'https://api.Competitor2.com/v1/inv-api/get-presets-list?tag=bm&netag=web_noru,web_nosite&location=RU&currency=rub&pricerate=1&currencycon=br&servertype=1&filter=no&language=ru&invapi=yes',
-            'https://api.Competitor2.com/v1/inv-api/get-stock-servers?location=&group=!GPU&stock=yes&currency=rub&currencycon=br&servertype=1&pricerate=1&language=ru&name=no',
-            'https://api.Competitor2.com/v1/inv-api/get-stock-servers?%20location=&group=gpu&stock=yes&currency=rub&pricerate=1&currencycon=br&servertype=1&name=no&filter=no&language=ru']
-        self.logger = logger
-        self.competitor = 'hostkey'
-        self.processor = DataProcessor(logger)
+            'https://Competitor2_first_page',
+            'https://Competitor2_second_page',
+            'https://Competitor2_third_page',
+            'https://Competitor2_fourth_page',
+            'https://Competitor2_fifth_page']
+        self.name = 'Competitor2'
+        self.processor = DataProcessor()
 
-    # извлечение данных с разных страниц сайтов
-    @task(max_retries=10, retry_delay=timedelta(seconds=10))
-    def extract_data(self):
-        # Выгрузка данных с веб-сайта
+    def extract_data_from_website(self, url):
+        """Выгрузка данных с пяти страниц веб-сайта"""
         data_from_website = []
-        urls = self.url
-        for url in urls:
-            self.logger.info(f'Start сonnection to {url}')
-            try:
-                servers = requests.get(url)
-                self.logger.info(f'Successful connection to {url} {servers}')
-            except requests.exceptions.HTTPError as err:
-                time.sleep(10)
-                raise SystemExit(err)
-            self.logger.info(f'Extracted data from website {servers.text}')
-            data_from_website.append(servers)
+        for page in url:
+            data_from_website.append(super().extract_data_from_website(page))
         return data_from_website
 
-    # валидация структуры json
-    def validate_json(self, data, structure):
-        try:
-            structure.parse_raw(data)
-        except ValidationError as e:
-            print(e.errors())
-            raise SystemExit(e)
-
-    # получение данных об объеме разных типов дисков
-    def unpack_disks_Competitor2(self, disk):
+    def unpack_disks_competitor2(self, disk):
+        """Получение данных об объеме разных типов дисков для списка базовых серверов"""
         output = {
             'hdd': 0,
             'ssd': 0,
@@ -384,7 +355,8 @@ class Competitor2:
                 output[disks[1]] = size
         return output['hdd'], output['ssd'], output['nvme']
 
-    def unpack_disks_Competitor2_sale_gpu(self, disks):
+    def unpack_disks_competitor2_sale_gpu(self, disks):
+        """Получение данных об объеме разных типов дисков для серверов по скидке и с GPU"""
         output = {
             'hdd': 0,
             'ssd': 0,
@@ -402,16 +374,18 @@ class Competitor2:
                 output['ssd'] = size
         return output['hdd'], output['ssd'], output['nvme']
 
-    # создание DataFrame с извлеченными данными для разных страницы сайта
-
-    def sale_gpu_Competitor2(self, data_from_website):
-        self.validate_json(data_from_website.text, StructureJson_Competitor2)
-        self.logger.info('Start Create df for Competitor2 sale and gpu servers')
+    def sale_gpu_competitor2(self, data_from_website):
+        """Извлечение и приведение к единой структуре DataFrame выгруженных серверов по скидке и с GPU"""
+        self.validate_json(data_from_website.text, StructureJsonCompetitor2)
+        self.logger.info(f'Start data transforming {self.name} sale and gpu servers')
+        # Преобразование полученного через API JSON в словарь Python и получение списка серверов
         servers = data_from_website.json()['response']
         counter = 0
-        data_Competitor2 = pd.DataFrame()
+        data_competitor2 = pd.DataFrame()
+
+        # итерация по списку серверов, для получения параметров каждой конфигурации
         for server in servers:
-            self.validate_json(json.dumps(server), Structure_Competitor2_sale)
+            self.validate_json(json.dumps(server), StructureCompetitor2Sale)
             id_config = uuid4()
             cpu = server['hardware']['cpu']['items'][0]
             cpu_name = self.processor.delete_vendor(cpu['name'].replace('xx*', 'XX'))
@@ -441,27 +415,28 @@ class Competitor2:
             price = server['common']['conditions']['items'][0]['prices']['current']
             config_row = [id_config, cpu_model_1, cpu_model_2, cpu_gen, cpu_count, gpu, gpu_count, cores, freq, ram,
                           ram_type,
-                          disks, datacenter, self.competitor, price, date]
+                          disks, datacenter, self.name, price, date]
             config_row = pd.Series(config_row, index=self.processor.columns_name, name=counter)
-            data_Competitor2 = pd.concat([data_Competitor2, config_row], axis=1, sort=False)
+            data_competitor2 = pd.concat([data_competitor2, config_row], axis=1, sort=False)
             counter += 1
 
-        data_Competitor2 = data_Competitor2.transpose()
-        data_Competitor2['hdd_size'], data_Competitor2['ssd_size'], data_Competitor2['nvme_size'] = zip(
-            *data_Competitor2['disks'].apply(self.unpack_disks_Competitor2_sale_gpu))
-        data_Competitor2 = data_Competitor2[self.processor.columns_all]
-        return (data_Competitor2)
+        data_competitor2 = data_competitor2.transpose()
+        data_competitor2['hdd_size'], data_competitor2['ssd_size'], data_competitor2['nvme_size'] = zip(
+            *data_competitor2['disks'].apply(self.unpack_disks_competitor2_sale_gpu))
+        data_competitor2 = data_competitor2[self.processor.columns_all]
+        return data_competitor2
 
-    def create_df_Competitor2(self, data_from_website):
-        self.validate_json(data_from_website.text, StructureJson_Competitor2)
-        self.logger.info('Start Create df for Competitor2 base servers')
-        Competitor2_servers = data_from_website.json()['response']
-        data_Competitor2y = pd.DataFrame()
+    def base_servers_competitor2(self, data_from_website):
+        """Извлечение и приведение к единой структуре DataFrame базовых серверов """
+        self.validate_json(data_from_website.text, StructureJsonCompetitor2)
+        self.logger.info(f'Start data transforming {self.name} base servers')
+        # Преобразование полученного через API JSON в словарь Python и получение списка серверов
+        competitor2_servers = data_from_website.json()['response']
+        data_competitor2 = pd.DataFrame()
         counter = 0
-
-        for server in Competitor2_servers:
-            self.validate_json(json.dumps(server), Structure_Competitor2)
-            print(server)
+        # итерация по списку серверов, для получения параметров каждой конфигурации
+        for server in competitor2_servers:
+            self.validate_json(json.dumps(server), StructureCompetitor2)
             id_config = uuid4()
             cpu_name = self.processor.delete_vendor(server['hardware']['cpu']['description'].replace('xx*', 'XX'))
             cpu_name_parts = self.processor.get_cpu_count(cpu_name)
@@ -483,51 +458,39 @@ class Competitor2:
             price = server['common']['conditions']['items'][0]['prices']['current']
             config_row = [id_config, cpu_model_1, cpu_model_2, cpu_gen, cpu_count, gpu, gpu_count, cores, freq, ram,
                           ram_type,
-                          disks, datacenter, self.competitor, price, date]
+                          disks, datacenter, self.name, price, date]
             config_row = pd.Series(config_row, index=self.processor.columns_name, name=counter)
-            data_Competitor2 = pd.concat([data_Competitor2, config_row], axis=1, sort=False)
+            data_competitor2 = pd.concat([data_competitor2, config_row], axis=1, sort=False)
             counter += 1
 
-        data_Competitor2 = data_Competitor2.transpose()
-        data_Competitor2['hdd_size'], data_Competitor2['ssd_size'], data_Competitor2['nvme_size'] = zip(
-            *data_Competitor2['disks'].apply(self.unpack_disks_Competitor2))
-        data_Competitor2 = data_Competitor2[self.processor.columns_all]
-        return data_Competitor2
+        data_competitor2 = data_competitor2.transpose()
+        data_competitor2['hdd_size'], data_competitor2['ssd_size'], data_competitor2['nvme_size'] = zip(
+            *data_competitor2['disks'].apply(self.unpack_disks_competitor2))
+        data_competitor2 = data_competitor2[self.processor.columns_all]
+        return data_competitor2
 
-    # преобразование данных
-    @task
     def transform_data(self, data_from_website):
-        self.logger.info('Start Competitor2 data transforming')
-        d_NL = self.create_df_Competitor2(data_from_website[0])
-        d_USA = self.create_df_Competitor2(data_from_website[1])
-        d_R = self.create_df_Competitor2(data_from_website[2])
-        d_sale = self.sale_gpu_Competitor2(data_from_website[3])
-        d_gpu = self.sale_gpu_Competitor2(data_from_website[4])
-        res_Competitor2 = pd.concat([d_NL, d_USA, d_R, d_sale, d_gpu])
-        res_Competitor2 = res_Competitor2.astype(self.processor.data_type)
-        self.logger.info(f'Transformed data of {self.competitor}: {res_Competitor2.shape}')
-        return (res_Competitor2)
-
-    # закгрузка в базу данных
-    @task
-    def load_to_db(self, transformed_data):
-        self.processor.load_to_db(self.competitor, transformed_data)
+        """Объединение преобразованных данных со всех страниц в единый DataFrame"""
+        self.logger.info(f'Start data transforming {self.name} all servers')
+        d_NL = self.base_servers_competitor2(data_from_website[0])
+        d_USA = self.base_servers_competitor2(data_from_website[1])
+        d_R = self.base_servers_competitor2(data_from_website[2])
+        d_sale = self.sale_gpu_competitor2(data_from_website[3])
+        d_gpu = self.sale_gpu_competitor2(data_from_website[4])
+        res_competitor2 = pd.concat([d_NL, d_USA, d_R, d_sale, d_gpu]).astype(self.processor.data_type)
+        self.logger.info(f'Transformed data of {self.name}: {res_competitor2.shape}')
+        return res_competitor2
 
 
-class Competitor3:
+class Competitor3(DataHandler):
     def __init__(self, logger):
-        self.url = 'https://www.Competitor3/dedicated_servers'
-        self.logger = logger
-        self.competitor = 'Competitor3'
-        self.processor = DataProcessor(logger)
+        super().__init__(logger)
+        self.url = 'url'
+        self.name = 'Competitor3'
+        self.processor = DataProcessor()
 
-    # выгрузка данных с веб-сайта
-    @task(max_retries=10, retry_delay=timedelta(seconds=10))
-    def extract_data(self):
-        return self.processor.extract_data_from_website(self.url)
-
-    # извлечение данных об объеме каждого типов дисков
     def unpack_disks(self, disks):
+        """Извлечение данных об объеме каждого типов дисков"""
         output = {
             'hdd': 0,
             'ssd': 0,
@@ -543,16 +506,15 @@ class Competitor3:
                 output[disk[3]] = output[disk[3]] + size
         return output['hdd'], output['ssd'], output['nvme']
 
-    # Функция для извлечения и структурирования данных
-    @task
     def transform_data(self, data_from_website):
-        self.logger.info('Start data transforming')
+        """Извлечение и приведение к единой структуре DataFrame выгруженного HTML-кода"""
+        self.logger.info(f'Start data transforming {self.name}')
         # Создаем объект Beautiful Soup для парсинга HTML-кода
         soup = BeautifulSoup(data_from_website.content, "html.parser")
         # Находим все элементы <div> с классом 'b-dedicated-servers-list-item__con
         # tent' с помощью метода findAll()
         servers = soup.findAll('div', class_='b-dedicated-servers-list-item__content')
-        # создание DataFrame для структурированных данных
+        # создание DataFrame для итоговых структурированных данных
         transformed_data = pd.DataFrame()
         counter = 0
 
@@ -589,7 +551,7 @@ class Competitor3:
             gpu_count = 0
             config_row = [id_config, cpu_model_1, cpu_model_2, cpu_gen, cpu_count, gpu, gpu_count, cores, frequency,
                           ram, ram_type, disks,
-                          datacenter, self.competitor, price, date]
+                          datacenter, self.name, price, date]
             config_row = pd.Series(config_row, index=self.processor.columns_name, name=counter)
             transformed_data = pd.concat([transformed_data, config_row], axis=1, sort=False)
             counter += 1
@@ -604,24 +566,39 @@ class Competitor3:
             *transformed_data['disks'].apply(self.unpack_disks))
         transformed_data = transformed_data[[self.processor.columns_all]]
         transformed_data = transformed_data.astype(self.processor.data_type)
-        self.logger.info(f'Transformed data of {self.competitor}: {transformed_data.shape}')
+        self.logger.info(f'Transformed data of {self.name}: {transformed_data.shape}')
 
         return transformed_data
 
-    # загрузка в базу данных
-    @task
-    def load_to_db(self, transformed_data):
-        self.processor.load_to_db(self.competitor, transformed_data)
+
+# Создание task Prefect
+
+@task(max_retries=10, retry_delay=timedelta(seconds=10))
+def extract_data(competitor):
+    """Задача по выгрузке данных, принимает экзепляр класса одного из конкурентов
+    и выгружает информацию с его веб-сайта """
+    return competitor.extract_data_from_website(competitor.url)
 
 
+@task
+def transform_data(competitor, data_from_website):
+    """Задача по преобразованию данных, принимает экземпляр класса конкурента, выгруженную с его веб-сайта информацию
+    и возвращает DataFrame"""
+    return competitor.transform_data(data_from_website)
+
+
+@task
+def load_to_db(competitor, provider_name, transformed_data):
+    """Задача для загрузки данных в БД, принимает экземпляр класса конкурента, преобразованные данные и сохраняет
+    их в таблицы configs и price """
+    return competitor.load_to_db(provider_name, transformed_data)
+
+
+# Создание flow Prefect
 with Flow('load_competitors_data_script') as flow:
     logger = prefect.context.get("logger")
-    # создание экземпляров класса для работы с данными конкурентов
-    parsers = [Competitor1(logger), Competitor2(logger), Competitor3(logger)]
-    for parser in parsers:
-        # выгрузка данных с веб-сайтов
-        data_from_website = parser.extract_data(parser)
-        # обработка и структурирование данных
-        transformed_data = parser.transform_data(parser, data_from_website)
-        # сохранение в базу данных
-        parser.load_to_db(parser, transformed_data)
+    competitors_list = [Competitor1(logger), Competitor2(logger), Competitor3(logger)]
+    for competitor in competitors_list:
+        data_from_website = extract_data(competitor)
+        transformed_data = transform_data(competitor, data_from_website)
+        load_to_db(competitor, competitor.name, transformed_data)

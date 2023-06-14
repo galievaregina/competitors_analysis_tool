@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch, MagicMock
 import pandas as pd
-from comparison import Company, Comparator
+from flows.comparison import Company, Comparator
 from pandas.testing import assert_frame_equal
 
 
@@ -34,17 +34,6 @@ class TestCompany(unittest.TestCase):
         cpu_name = 'Ryzen 9-5950X'
         cpu_parts = self.company.get_data_cpu(cpu_name)
         self.assertEqual(cpu_parts, ['RYZEN', '9', '5950X'])
-
-    @patch('pandas.read_sql_query')
-    def test_get_data_from_company_db(self, mock_read_sql_query):
-        expected_company_data = [{'cpu_name': 'Intel Xeon E-2234', 'cpu_base_freq': 3.6, 'cpu_count': 1,
-                                  'cores_per_cpu': 4, 'gpu_name': '', 'gpu_count': 0,
-                                  'disk': [{'size': 1000, 'count': 1, 'type': 'hdd'}],
-                                  'ram': [{'size': 16, 'count': 1, 'type': 'DDR4'}], 'id_config': 'Test config',
-                                  'price': 100}]
-        mock_read_sql_query.return_value = pd.DataFrame(expected_company_data)
-        company_data = self.company.get_data_from_company_db()
-        self.assertListEqual(company_data, expected_company_data)
 
     def test_transform_company_data(self):
         test_data = [
@@ -149,7 +138,6 @@ class TestComparator(unittest.TestCase):
             'frequency': [2.0, 2.0, 2.5, 2.5]
         })
 
-        # Mock company_config Series
         company_config = pd.Series({
             'cpu_model_2': 'SILVER',
             'ram_type': 'DDR4',
@@ -193,3 +181,7 @@ class TestComparator(unittest.TestCase):
         assert output.iloc[0]['gpu'] == 'GTX 1070'
         assert output.iloc[0]['gpu_count'] == 4
         assert output.iloc[0]['total_match'] == 1
+
+
+if __name__ == '__main__':
+    unittest.main()

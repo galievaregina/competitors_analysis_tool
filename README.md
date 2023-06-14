@@ -1,1 +1,1 @@
-# competitors_analysis_tool
+# Competitors analysis tool
