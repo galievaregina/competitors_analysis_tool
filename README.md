@@ -20,14 +20,14 @@
 Локальный запуск flow
 ``` flow.run()```
 
-В разработанном инструменте код запускается на облачном сервере через пользовательский интерфейс Prefect.  
+В разработанном инструменте для мониторинга выполнения потоков используется пользовательский интерфейс Prefect.  
 
-Для того, чтобы управлять flow из пользовательского интерфейса Prefect необходимо:
+Для того, чтобы управлять потоками и отслеживать их выполнение из пользовательского интерфейса Prefect необходимо:
 1. Создать проект, в котором будут хранится наши flow
 
 ```! prefect create project "COMPETITOR_ANALYSIS" --description "This is the project to competitor analysis"```
 
-2. Зарегистрировать в нашем проекте flow
+2. Зарегистрировать в созданном проекте реализованные flow
 
 - ```! prefect register --project COMPETITOR_ANALYSIS -p flows/load_competitors_data.py -l local-agent```
 - ```! prefect register --project COMPETITOR_ANALYSIS -p flows/comparison.py -l local-agent```
